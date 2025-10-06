@@ -1,0 +1,8 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tatt07/project2-bootstrap:latest
+    ports:
+      - "8091:80"
