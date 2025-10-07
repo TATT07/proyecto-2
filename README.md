@@ -62,6 +62,8 @@ La imagen está publicada como:
 
 tatt07/project2-bootstrap:latest
 
+imagen:
+<img width="1780" height="980" alt="image" src="https://github.com/user-attachments/assets/5f2b473a-52e7-4400-8615-3311a15a6e98" />
 
 Si necesitas subirla manualmente:
 
