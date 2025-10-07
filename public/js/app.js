@@ -1,153 +1,73 @@
-// Proyecto 2 - Bootstrap + JS (mínimo)
-const API = 'https://todoapitest.juansegaliz.com/todos';
+const API = 'https://todoapitest.juansegaliz.com';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-const el = {
-  list: document.getElementById('list'),
-  listInfo: document.getElementById('listInfo'),
-  msg: document.getElementById('msg'),
-  form: document.getElementById('form'),
-  id: document.getElementById('id'),
-  title: document.getElementById('title'),
-  desc: document.getElementById('desc'),
-  completed: document.getElementById('completed'),
-  clear: document.getElementById('clear')
-};
-
-async function request(url, options = {}) {
-  try {
-    const resp = await fetch(url, options);
-    if (resp.status === 204) return null;
-    const body = await resp.json();
-    if (!resp.ok) throw body;
-    return (body && body.data !== undefined) ? body.data : body;
-  } catch (err) {
-    el.msg.textContent = 'Error: ' + (err.message || JSON.stringify(err));
-    console.error(err);
-    throw err;
-  }
+async function req(method, path, body=null) {
+  const url = API + path;
+  const opts = { method, headers: { Accept: 'application/json' } };
+  if (body !== null) { opts.headers['Content-Type']='application/json'; opts.body = JSON.stringify(body); }
+  const res = await fetch(url, opts).catch(()=>{ throw new Error('No se pudo conectar'); });
+  const txt = await res.text();
+  let data = null;
+  try { data = txt ? JSON.parse(txt) : null; } catch { data = txt; }
+  if (!res.ok) throw new Error((typeof data === 'string') ? data : JSON.stringify(data));
+  return (data && data.data !== undefined) ? data.data : (data ?? null);
 }
 
-async function loadAll() {
-  el.listInfo.textContent = 'Cargando...';
-  el.list.innerHTML = '';
+async function load() {
+  const ul = $('list'); if (!ul) return;
+  ul.innerHTML = '<li>Cargando...</li>';
   try {
-    const data = await request(API);
-    const todos = Array.isArray(data) ? data : [];
-    el.listInfo.textContent = `Total: ${todos.length}`;
-    if (!todos.length) {
-      el.list.innerHTML = '<li class="list-group-item">No hay tareas</li>';
-      return;
-    }
+    const todos = await req('GET', '/todos') || [];
+    if (!todos.length) return ul.innerHTML = '<li>No hay tareas</li>';
+    ul.innerHTML = '';
     todos.forEach(t => {
       const li = document.createElement('li');
-      li.className = 'list-group-item d-flex justify-content-between align-items-start';
-      li.innerHTML = `
-        <div class="ms-2 me-auto">
-          <div class="fw-bold ${t.isCompleted ? 'text-decoration-line-through text-muted' : ''}">${escape(t.title)}</div>
-          <div class="meta">${escape(t.description || '')}</div>
-        </div>
-        <div class="btn-group btn-group-sm" role="group" aria-label="actions">
-          <button class="btn btn-light btn-sm view" data-id="${t.id}">Ver</button>
-          <button class="btn btn-warning btn-sm edit" data-id="${t.id}">Editar</button>
-          <button class="btn btn-danger btn-sm del" data-id="${t.id}">Eliminar</button>
-        </div>
-      `;
-      el.list.appendChild(li);
+      li.innerHTML = `<div><strong>${esc(t.title)}</strong><div>${esc(t.description||'')}</div></div>
+                      <div>
+                        <button data-id="${t.id}" class="view">Ver</button>
+                        <button data-id="${t.id}" class="edit">Editar</button>
+                        <button data-id="${t.id}" class="del">Eliminar</button>
+                      </div>`;
+      ul.appendChild(li);
     });
-  } catch (e) {
-    el.listInfo.textContent = 'Error cargando';
-    el.list.innerHTML = '<li class="list-group-item text-danger">Error cargando tareas</li>';
-  }
+  } catch (e) { ul.innerHTML = `<li style="color:red">${esc(e.message)}</li>`; }
 }
 
-async function getOne(id) {
-  try {
-    const resp = await fetch(`${API}/${id}`);
-    const parsed = await resp.json();
-    return parsed && parsed.data ? parsed.data : parsed;
-  } catch (e) { throw e; }
-}
-
-async function createTodo(payload) {
-  const body = { title: payload.title, description: payload.description, isCompleted: !!payload.completed };
-  const resp = await fetch(API, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
-  const parsed = await resp.json();
-  if (!resp.ok) throw parsed;
-  return parsed.data ?? parsed;
-}
-
-async function updateTodo(id, payload) {
-  const body = { title: payload.title, description: payload.description, isCompleted: !!payload.completed };
-  const resp = await fetch(`${API}/${id}`, { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
-  const parsed = await resp.json();
-  if (!resp.ok) throw parsed;
-  return parsed.data ?? parsed;
-}
-
-async function deleteTodo(id) {
-  const resp = await fetch(`${API}/${id}`, { method: 'DELETE' });
-  if (!resp.ok) {
-    const parsed = await resp.json().catch(()=>null);
-    throw parsed || new Error('Error eliminar');
-  }
-  return null;
-}
-
-function escape(s){ return String(s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-
-// Events
-el.form.addEventListener('submit', async e => {
+if ($('form')) $('form').addEventListener('submit', async e => {
   e.preventDefault();
-  el.msg.textContent = '';
-  const payload = { title: el.title.value.trim(), description: el.desc.value.trim(), completed: el.completed.checked };
-  if (!payload.title) { el.msg.textContent = 'El título es obligatorio'; return; }
+  const id = $('id')?.value || '';
+  const title = $('title').value.trim();
+  if (!title) return alert('Título requerido');
+  const body = { title, description: $('desc')?.value.trim() || '', isCompleted: !!$('completed')?.checked };
   try {
-    if (el.id.value) {
-      await updateTodo(el.id.value, payload);
-      el.msg.textContent = 'Tarea actualizada';
-    } else {
-      await createTodo(payload);
-      el.msg.textContent = 'Tarea creada';
+    if (id) await req('PUT', `/todos/${encodeURIComponent(id)}`, body);
+    else await req('POST', `/todos`, body);
+    $('form').reset(); if ($('id')) $('id').value = '';
+    load();
+  } catch (err) { alert('Error: ' + err.message); }
+});
+
+if ($('list')) $('list').addEventListener('click', async ev => {
+  const btn = ev.target.closest('button'); if (!btn) return;
+  const id = btn.dataset.id; if (!id) return;
+  try {
+    if (btn.classList.contains('view')) {
+      const it = await req('GET', `/todos/${encodeURIComponent(id)}`);
+      alert(`${it.title}\n\n${it.description||''}\n\nCompletado: ${it.isCompleted}`);
+    } else if (btn.classList.contains('edit')) {
+      const it = await req('GET', `/todos/${encodeURIComponent(id)}`);
+      if ($('id')) $('id').value = it.id;
+      if ($('title')) $('title').value = it.title || '';
+      if ($('desc')) $('desc').value = it.description || '';
+      if ($('completed')) $('completed').checked = !!it.isCompleted;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (btn.classList.contains('del')) {
+      if (!confirm('Eliminar?')) return;
+      await req('DELETE', `/todos/${encodeURIComponent(id)}`);
+      load();
     }
-    el.form.reset();
-    el.id.value = '';
-    loadAll();
-  } catch (err) {
-    console.error(err);
-    el.msg.textContent = 'Error al guardar';
-  }
+  } catch (err) { alert('Error: ' + err.message); }
 });
 
-el.clear.addEventListener('click', () => { el.form.reset(); el.id.value=''; el.msg.textContent=''; });
-
-el.list.addEventListener('click', async e => {
-  if (!e.target.matches('button')) return;
-  const id = e.target.dataset.id;
-  if (e.target.classList.contains('view')) {
-    try {
-      const t = await getOne(id);
-      const item = t && t.data ? t.data : t;
-      el.msg.textContent = `Ver: ${item.title} — ${item.description || ''} — Completado: ${item.isCompleted}`;
-    } catch (e) { el.msg.textContent = 'Error al obtener'; }
-  } else if (e.target.classList.contains('edit')) {
-    try {
-      const t = await getOne(id);
-      const item = t && t.data ? t.data : t;
-      el.id.value = item.id;
-      el.title.value = item.title;
-      el.desc.value = item.description || '';
-      el.completed.checked = !!item.isCompleted;
-      el.msg.textContent = 'Editando...';
-    } catch (e) { el.msg.textContent = 'Error al obtener'; }
-  } else if (e.target.classList.contains('del')) {
-    if (!confirm('¿Eliminar esta tarea?')) return;
-    try {
-      await deleteTodo(id);
-      el.msg.textContent = 'Tarea eliminada';
-      loadAll();
-    } catch (e) { el.msg.textContent = 'Error al eliminar'; }
-  }
-});
-
-// Init
-loadAll();
+load();
